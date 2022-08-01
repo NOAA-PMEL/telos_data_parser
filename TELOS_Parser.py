@@ -4,9 +4,9 @@ from dateutil import parser
 from datetime import timedelta
 import dearpygui.dearpygui as dpg
 import os
-
-import_path = f'D:\Data\TELOS Parsing\\07262022.TXT'
-export_path = f'D:\Data\TELOS Parsing'
+#
+# import_path = f'D:\Data\TELOS Parsing\\07262022.TXT'
+# export_path = f'D:\Data\TELOS Parsing'
 
 '''
 TODO:
@@ -23,20 +23,21 @@ def read_and_parse(path):
     cur_delta = f''
     inst_list = set()
     data_bucket = []
-    header_line = 0
+    header_line = -2
     # output_headers = {}
 
     parsed_data = {}
     error_flags = set()
 
     # read file
-    with open(import_path, 'r') as ifile:
+    with open(path, 'r') as ifile:
         master_file = ifile.readlines()
 
     for n, line in enumerate(master_file):
 
         # skip empty lines
-        if len(line) < 2:
+        #if len(line) == 0 and line='\n':
+        if line == '\n' or line == '':
             continue
 
         # skips line containing variables names
@@ -50,19 +51,19 @@ def read_and_parse(path):
         # we'll identify new lines when they havem then
         if re.search(iso_pattern, line):
 
+            if (cur_inst not in set(parsed_data.keys())) and (data_bucket != []):
+                parsed_data[cur_inst] = data_bucket
+            elif data_bucket != []:
+                parsed_data[cur_inst] = parsed_data[cur_inst] + data_bucket
+
             elems = line.split(',')
 
             cur_inst = elems[0]
             cur_date = parser.parse(elems[1])
             cur_date = cur_date.replace(tzinfo=None)
             dt = parser.parse(elems[2]).time()
-            cur_delta = timedelta(hours=dt.hour, minutes=dt.hour, seconds=dt.second, microseconds=dt.microsecond)
+            cur_delta = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second, microseconds=dt.microsecond)
             header_line = n
-
-            if (cur_inst not in set(parsed_data.keys())) and (data_bucket != []):
-                parsed_data[cur_inst] = data_bucket
-            elif data_bucket != []:
-                parsed_data[cur_inst] = parsed_data[cur_inst] + data_bucket
 
             data_bucket = []
             inst_list.add(cur_inst)     # might be unecessary now
@@ -99,20 +100,38 @@ def write_files_and_folders(path, data, day):
 def GUI():
 
     dpg.create_context()
+    table_rows = []
 
     def check_export():
 
+        dpg.set_value('status', 'Preparing!')
+
+        for row in table_rows:
+            dpg.delete_item(row)
+
+        if dpg.get_value('export_path') == None:
+            ex_path = os.path.abspath(os.path.curdir)
+        else:
+            ex_path = dpg.get_value('export_path')
+
         if os.path.isfile(dpg.get_value('input_file')):
 
-            data, date, errors = read_and_parse(import_path)
-            write_files_and_folders(export_path, data, date)
+            data, date, errors = read_and_parse(dpg.get_value('input_file'))
+            write_files_and_folders(ex_path, data, date)
 
-            dpg.set_value('report', f'Exported. \n {errors}')
+            dpg.set_value('status', 'Complete!')
+
+            for err in errors:
+                print(err)
+
+                table_rows.append(dpg.generate_uuid())
+
+                #dpg.add_table_row(tag=table_rows[-1], parent='report')
+                with dpg.table_row(tag=table_rows[-1], parent='report'):
+                    dpg.add_text(f'{err}')
 
         else:
-
-            dpg.set_value('report', 'Set input filepath!')
-
+            dpg.set_value('status', 'Select import file!')
 
     def get_file_path():
         file_uid = dpg.generate_uuid()
@@ -125,6 +144,9 @@ def GUI():
             dpg.add_file_extension('.txt')
 
         dpg.show_item(file_uid)
+
+        if dpg.get_value('input_file') != '':
+            dpg.set_value('status', 'Ready!')
 
     def get_folder_path():
         folder_uid = dpg.generate_uuid()
@@ -150,8 +172,10 @@ def GUI():
 
         dpg.add_button(tag='export', label='Parse and Export', callback=check_export)
 
-        dpg.add_text(tag='report')
-        dpg.add_
+        dpg.add_text(tag='status', label='Set read path')
+        with dpg.table(tag='report', header_row=False):
+            dpg.add_table_column()
+
 
     dpg.create_viewport(title='TELOS Data Parsing', width=600, height=600)
     dpg.setup_dearpygui()
